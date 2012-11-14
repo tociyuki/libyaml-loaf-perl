@@ -1,0 +1,11 @@
+Changes
+lib/YAML/Loaf.pm
+Makefile.PL
+MANIFEST			This list of files
+README
+t/00-load.t
+t/01-exams.t
+t/02-alias.t
+t/03-blessed.t
+t/pod-coverage.t
+t/pod.t

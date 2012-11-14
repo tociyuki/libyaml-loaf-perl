@@ -1,0 +1,7 @@
+Revision history for YAML-Loaf
+
+0.01 Wed Nov 14 14:01:20 2012
+    * add tag resoluter for YAML Core Schema.
+    * add tag resoluter for Perl Schema.
+    * add alias referrer to specified anchor.
+    * forked from experimental YAML Backtrack Parser.
