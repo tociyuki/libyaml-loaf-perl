@@ -1,5 +1,11 @@
 Revision history for YAML-Loaf
 
+0.03 Fri Nov 16 07:13:07 2012
+    + add support YAML directive.
+    + add support TAG directive.
+    + add resolution local, global tag handles.
+    + add tagmap feature.
+
 0.02 Fri Nov 16 03:09:01 2012
     * change tag resoluter working on verbatim tag.
     * add supporting non-specific tag properties.

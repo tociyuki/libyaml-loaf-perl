@@ -1,6 +1,6 @@
 YAML-Loaf
 
-This module provides you to pure Perl YAML 1.2 Loader function.
+This module provides you the pure perl loader for YAML 1.2.
 
 INSTALLATION
 

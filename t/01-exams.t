@@ -556,7 +556,7 @@ application specific tag: !something |
 ]
 
 ### Example 2.24
-Global Tags
+Global Tags (see t/04-tagmap.t)
 === input
 %TAG ! tag:clarkevans.com,2002:
 --- !shape
@@ -1337,7 +1337,7 @@ Reserved Directives
 ]
 
 ### Example 6.14
-"YAML" directive (ignored)
+"YAML" directive
 === input
 %YAML 1.3 # Attempt parsing
            # with a warning
@@ -1349,7 +1349,7 @@ Reserved Directives
 ]
 
 ### Example 6.16
-"TAG" directive (ignored)
+"TAG" directive
 === input
 %TAG !yaml! tag:yaml.org,2002:
 ---
@@ -1360,7 +1360,7 @@ Reserved Directives
 ]
 
 ### Example 6.18
-Primary Tag Handle (ignored)
+Primary Tag Handle (see t/04-tagmap.t)
 === input
 # Private
 !foo "bar"
@@ -1385,7 +1385,7 @@ Primary Tag Handle (ignored)
 ]
 
 ### Example 6.19
-Secondary Tag Handle (ignored)
+Secondary Tag Handle (see t/04-tagmap.t)
 === input
 %TAG !! tag:example.com,2000:app/
 ---
@@ -1401,7 +1401,7 @@ Secondary Tag Handle (ignored)
 ]
 
 ### Example 6.20
-Tag Handles (ignored)
+Tag Handles (see t/04-tagmap.t)
 === input
 %TAG !e! tag:example.com,2000:app/
 ---
@@ -1417,7 +1417,7 @@ Tag Handles (ignored)
 ]
 
 ### Example 6.21
-Local Tag Prefix (ignored)
+Local Tag Prefix (see t/04-tagmap.t)
 === input
 %TAG !m! !my-
 --- # Bulb here
@@ -1443,7 +1443,7 @@ Local Tag Prefix (ignored)
 ]
 
 ### Example 6.22
-Global Tag Prefix (ignored)
+Global Tag Prefix (see t/04-tagmap.t)
 === input
 %TAG !e! tag:example.com,2000:app/
 ---
@@ -1488,7 +1488,7 @@ my $B1 = "foo";
 ]
 
 ### Example 6.24
-Verbatim Tags (ignored out of tag:yaml.org,2002)
+Verbatim Tags (see t/04-tagmap.t)
 === input
 !<tag:yaml.org,2002:str> foo :
   !<!bar> baz
@@ -1506,7 +1506,7 @@ Verbatim Tags (ignored out of tag:yaml.org,2002)
 ]
 
 ### Example 6.26
-Tag Shorthands (ignored)
+Tag Shorthands (see t/04-tagmap.t)
 === input
 %TAG !e! tag:example.com,2000:app/
 ---
@@ -1528,7 +1528,7 @@ Tag Shorthands (ignored)
 ]
 
 ### Example 6.28
-Non-Specific Tags (ignored)
+Non-Specific Tags
 === input
 # Assuming conventional resolution:
 - "12"
@@ -3144,7 +3144,7 @@ Directives Documents
 --- |
 %!PS-Adobe-2.0
 ...
-%YAML1.2
+%YAML 1.2
 ---
 # Empty
 ...
