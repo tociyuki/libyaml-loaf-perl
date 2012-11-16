@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Carp;
 
-our $VERSION = '0.01'; # $Id$
+use version; our $VERSION = '0.02';
 
 my $FALSE = q();
 my %YAML_CORE = (
@@ -107,41 +107,46 @@ sub _anchor {
 
 sub _resolute {
     my($node, $tag) = @_;
-    if (! $tag) {
-    	$tag = ref $node eq 'ARRAY' ? '!!seq'
-    		: ref $node eq 'HASH' ? '!!map'
-    		: ! defined $node ? '!!null'
-    		: '!!str';
+    if (! $tag || $tag eq q(!)) {
+    	$tag = ref $node eq 'ARRAY' ? '!<tag:yaml.org,2002:seq>'
+    		: ref $node eq 'HASH' ? '!<tag:yaml.org,2002:map>'
+    		: ! $tag && ! defined $node ? '!<tag:yaml.org,2002:null>'
+    		: '!<tag:yaml.org,2002:str>';
     }
-    $tag =~ s{\A!<tag:yaml.org,2002:(.*)>}{!!$1}omsx;
+    $tag =~ s{\A!!(.*)\z}{!<tag:yaml.org,2002:$1>}omsx;
     if ($tag =~ m{\A
-		!!perl/
+		!<tag:yaml.org,2002:perl/
 		(?:	($PERLBASIC) (?:[:]($PKG))?
 		|	[:]($PKG)
-		|	(?!$PERLBASIC)($PKG) )    
+		|	(?!$PERLBASIC)($PKG) )
+		>
     \z}omsx) {
     	my($type, $pkg) = ($1 || q(), $2 || $3 || $4 || q());
         return _resolute_perl($node, $type, $pkg);
 	}
 	if (! defined $node) {
-	    return $tag eq '!!str' || $tag eq '!!binary' ? q()
-	        : $tag eq '!!bool' ? $FALSE
-	        : $tag eq '!!int' || $tag eq '!!float' ? 0
-	        : $tag eq '!!seq' ? []
-	        : $tag eq '!!map' ? {}
+	    return $tag eq '!<tag:yaml.org,2002:str>' ? q()
+	        : $tag eq '!<tag:yaml.org,2002:binary>' ? q()
+	        : $tag eq '!<tag:yaml.org,2002:bool>' ? $FALSE
+	        : $tag eq '!<tag:yaml.org,2002:int>' ? 0
+	        : $tag eq '!<tag:yaml.org,2002:float>' ? 0
+	        : $tag eq '!<tag:yaml.org,2002:seq>' ? []
+	        : $tag eq '!<tag:yaml.org,2002:map>' ? {}
 	        : undef;
 	}
 	return $node if ref $node;
-    if ($tag eq '!!null' || $tag eq '!!bool') {
+    if ($tag eq '!<tag:yaml.org,2002:null>'
+        || $tag eq '!<tag:yaml.org,2002:bool>'
+    ) {
         return exists $YAML_CORE{$node} ? $YAML_CORE{$node}
             : $node ? $node
-            : $tag eq '!!bool' ? $FALSE
+            : $tag eq '!<tag:yaml.org,2002:bool>' ? $FALSE
             : undef;
     }
-    if ($tag eq '!!int') {
+    if ($tag eq '!<tag:yaml.org,2002:int>') {
     	return _resolute_int($node);
     }
-	if ($tag eq '!!binary') {
+	if ($tag eq '!<tag:yaml.org,2002:binary>') {
         require MIME::Base64;
         return MIME::Base64::decode_base64($node);
 	}
@@ -150,7 +155,7 @@ sub _resolute {
 
 sub _resolute_perl {
     my($node, $type, $pkg) = @_;
-	croak "YAML::Loaf::Load: !!perl/$type is not allowed."
+	croak "YAML::Loaf::Load: !<tag:yaml.org,2002:perl/$type> is not allowed."
 		if $type eq 'code' || $type eq 'io' || $type eq 'glob';
 	if ($type eq 'regexp') {
 		$node = defined $node ? $node : q(.?);
@@ -172,6 +177,10 @@ sub _resolute_perl {
 	}
 	if ($type eq 'hash') {
 		$node = defined $node ? $node : {};
+	}
+	if ($pkg && ! ref $node) {
+	    my $x = $node;
+	    return bless \$x, $pkg;
 	}
 	return $node if ! ref $node;
 	$node = defined $node ? $node : {};
@@ -707,7 +716,7 @@ YAML::Loaf - YAML Loader almost Full-set on YAML 1.2 Specification.
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =head1 SYNOPSIS
 
@@ -737,6 +746,50 @@ and several part of proposed Perl tag schema.
 Decode a YAML 1.2 stream of the given string.
 In the scalar context, returns only first document.
 In the array context, returns all documents in the stream.
+
+=back
+
+=head1 LIMITATIONS
+
+=over
+
+=item *
+
+All of directives are ignored and are not interpreted without warnings.
+
+=item *
+
+Tag properties are always resoluted on YAML Core Shema and perl schema.
+
+=item *
+
+Local tag properties are ignored.
+
+=item *
+
+Primary tag handles and Named handles do not work. All of them are ignored.
+
+    %YAML 1.2                       # ignored
+    %TAG !yaml! tag:yaml.org,2002:  # ignored
+    ---
+    !yaml!str "foo"                 # can not resolute as !<tag:yaml.org,2002:str>
+    !!str "bar"                     # !<tag:yaml.org,2002:str>
+    ...
+    %YAML 1.2                       # ignored
+    %TAG !! tag:example.net,2000:   # ignored
+    ---
+    !!int 1 - 3                     # !<tag:yaml.org,2002:int>
+
+=item *
+
+Secondary tag prefixs and non-specfic tags work only as YAML URIs.
+
+    ---
+    - !!str ""                      # !<tag:yaml.org,2002:str>
+    - !!perl/hash:Foo::Bar {}       # !<tag:yaml.org,2002:perl/hash:Foo::Bar>
+    - ! 12                          # !<tag:yaml.org,2002:str> 12
+    - ! []                          # !<tag:yaml.org,2002:seq> []
+    - ! {}                          # !<tag:yaml.org,2002:map> {}
 
 =back
 
