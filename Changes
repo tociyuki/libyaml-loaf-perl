@@ -1,5 +1,10 @@
 Revision history for YAML-Loaf
 
+0.04 Sat Nov 17 05:46:38 2012
+    * give careful treatments on Load options.
+    * take off affected manners on _anchor and _resolute arguments.
+    * clean up logic in _resolute_perl
+
 0.03 Fri Nov 16 07:13:07 2012
     + add support YAML directive.
     + add support TAG directive.

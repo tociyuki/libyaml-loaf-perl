@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Carp;
 
-use version; our $VERSION = '0.03';
+use version; our $VERSION = '0.04';
 
 my $FALSE = q();
 my %YAML_CORE = (
@@ -64,12 +64,13 @@ my %UNESCAPE = (
 my $DOC_PREFIX = qr/$L_COMMENT* (?:[.][.][.] $S_L_COMMENTS)+/msx;
 
 sub Load {
-    my($string, @opt) = @_;
+    my($string, %opt) = @_;
     $string =~ s/\r\n?|\n/\n/gmsx;
     chomp $string;
     $string = "...\n" . $string . "\n";
+    %opt = ('tagmap' => $opt{'tagmap'} || {}, '!!' => 'tag:yaml.org,2002:');
     # \source, location, stash
-    my $derivs = [\$string, 0, {@opt}];
+    my $derivs = [\$string, 0, {%opt}];
     my @doc;
     STREAM: while (my $d1 = _doc_prefix($derivs)) {
         $derivs = $d1;
@@ -78,7 +79,7 @@ sub Load {
             my $d2 = [@{$derivs}]; --$d2->[1]; # backward character
             if (my($d3, $node) = _block_node($d2, -1, 'block-in')) {
                 push @doc, $node;
-                %{$derivs->[2]} = @opt;   # reset stash
+                %{$derivs->[2]} = %opt;   # reset stash
                 return $doc[0] if ! wantarray;
                 $derivs = $d3;
             }
@@ -87,7 +88,7 @@ sub Load {
             $derivs = $d2;
             if (my($d3, $node) = _block_node($derivs, -1, 'block-in')) {
                 push @doc, $node;
-                %{$derivs->[2]} = @opt;   # reset stash
+                %{$derivs->[2]} = %opt;   # reset stash
                 return $doc[0] if ! wantarray;
                 $derivs = $d3;
             }
@@ -124,13 +125,13 @@ sub _doc_prefix {
         }
         elsif ($name eq 'TAG') {
             my($handle, $prefix) = @arg;
-            croak 'Error: duplicate TAG handle. ' . _inspect($d1)
+            croak "Error: duplicate %TAG $handle.\n"
                 if exists $tag_handle{$handle};
             $tag_handle{$handle} = $prefix;
         }
         else {
             my($list) = @arg;
-            carp "Warning: unsupported directive. '\%$list'.\n";
+            carp "Warning: unsupported \%$list.\n";
         }
         $d1 = $d2;
     }
@@ -167,29 +168,35 @@ sub _directive {
 }
 
 sub _anchor {
-    my($node, $derivs, $anchor) = @_;
+    my($derivs, $anchor, $node) = @_;
     return $node if ! $anchor;
     $derivs->[2]{$anchor} = $node;
     return $node;
 }
 
+sub _resolute_plain {
+    my($derivs, $tag, $node) = @_;
+    return $tag ? _resolute($derivs, $tag, $node)
+        : exists $YAML_CORE{$node} ? $YAML_CORE{$node}
+        : _resolute_int($node);
+}
+
 sub _resolute {
-    my($node, $derivs, $tag) = @_;
+    my($derivs, $tag, $node) = @_;
     if (! $tag || $tag eq q(!) && ! exists $derivs->[2]{$tag}) {
     	$tag = ref $node eq 'ARRAY' ? '!<tag:yaml.org,2002:seq>'
     		: ref $node eq 'HASH' ? '!<tag:yaml.org,2002:map>'
     		: ! $tag && ! defined $node ? '!<tag:yaml.org,2002:null>'
     		: '!<tag:yaml.org,2002:str>';
     }
-    $derivs->[2]{'!!'} ||= 'tag:yaml.org,2002:';
     if ($tag =~ m{\A([!](?!<)(?:[!]|[0-9A-Za-z-]+[!])?)($TAGCHAR*)\z}omsx) {
-        my($handle, $suffix) = ($1, $2);
-        my $prefix = exists $derivs->[2]{$handle} ? $derivs->[2]{$handle}
-            : $handle;
-        $tag = "!<${prefix}${suffix}>";
+        my($handle, $segment) = ($1, $2);
+        my $prefix = 
+            exists $derivs->[2]{$handle} ? $derivs->[2]{$handle} : $handle;
+        $tag = "!<${prefix}${segment}>";
     }
     my $uri = $tag =~ m/\A!<(.+)>\z/msx ? $1 : q();
-    $uri =~ s{%([[:xdigit:]]{2})}{ $URICHAR_SAFE{hex $1} || "%$1" }egmsx;
+    $uri =~ s{%([[:xdigit:]]{2})}{ $URICHAR_SAFE{hex $1} || uc "%$1" }egmsx;
     if (exists $derivs->[2]{'tagmap'}{$uri}) {
         $uri = $derivs->[2]{'tagmap'}{$uri};
     }
@@ -199,9 +206,10 @@ sub _resolute {
 		|	[:]($PKG)
 		|	(?!$PERLBASIC)($PKG) )
     \z}omsx) {
-    	my($type, $pkg) = ($1 || q(), $2 || $3 || $4 || q());
-        return _resolute_perl($node, $type, $pkg);
-	}
+        my($type, $pkg) = ($1 || q(), $2 || $3 || $4 || q());
+        return _resolute_perl($type, $pkg, $node);
+    }
+	return $node if ref $node;
 	if (! defined $node) {
 	    return $uri eq 'tag:yaml.org,2002:str' ? q()
 	        : $uri eq 'tag:yaml.org,2002:binary' ? q()
@@ -212,10 +220,7 @@ sub _resolute {
 	        : $uri eq 'tag:yaml.org,2002:map' ? {}
 	        : undef;
 	}
-	return $node if ref $node;
-    if ($uri eq 'tag:yaml.org,2002:null'
-        || $uri eq 'tag:yaml.org,2002:bool'
-    ) {
+    if ($uri eq 'tag:yaml.org,2002:null' || $uri eq 'tag:yaml.org,2002:bool') {
         return exists $YAML_CORE{$node} ? $YAML_CORE{$node}
             : $node ? $node
             : $uri eq 'tag:yaml.org,2002:bool' ? $FALSE
@@ -228,48 +233,33 @@ sub _resolute {
         require MIME::Base64;
         return MIME::Base64::decode_base64($node);
 	}
-    return $node;
+    return $node;    
 }
 
 sub _resolute_perl {
-    my($node, $type, $pkg) = @_;
+    my($type, $pkg, $node) = @_;
 	croak "YAML::Loaf::Load: tag:yaml.org,2002:perl/$type is not allowed."
 		if $type eq 'code' || $type eq 'io' || $type eq 'glob';
 	if ($type eq 'regexp') {
 		$node = defined $node ? $node : q(.?);
-		return $node if ref $node;
-		return qr/$node/msx;
+		return qr/$node/msx if ! ref $node;
 	}
-	if ($type eq 'scalar') {
+	elsif ($type eq 'scalar') {
 		$node = defined $node ? $node : q();
-		return $node if ref $node;
-		my $x = $node;
-		return $pkg ? (bless \$x, $pkg) : \$x;
 	}
-	if ($type eq 'array') {
+	elsif ($type eq 'array') {
 		$node = defined $node ? $node : [];
-		if (ref $node eq 'HASH') {
+		if (ref $node eq 'HASH') {  # !!map to !!perl/array
 			my $obj = [%{$node}];
 			$node = $obj;
 		}
 	}
-	if ($type eq 'hash') {
-		$node = defined $node ? $node : {};
-	}
-	if ($pkg && ! ref $node) {
+	if (! ref $node && defined $node) {
 	    my $x = $node;
-	    return bless \$x, $pkg;
+	    return ! $pkg ? \$x : bless \$x, $pkg;
 	}
-	return $node if ! ref $node;
 	$node = defined $node ? $node : {};
-	return $pkg ? (bless $node, $pkg) : $node;
-}
-
-sub _resolute_plain {
-    my($node, $derivs, $tag) = @_;
-    return $tag ? _resolute($node, $derivs, $tag)
-        : exists $YAML_CORE{$node} ? $YAML_CORE{$node}
-        : _resolute_int($node);
+	return ! $pkg ? $node : bless $node, $pkg;
 }
 
 sub _resolute_int {
@@ -380,7 +370,7 @@ sub _block_scalar {
         $s =~ s{^([^ \t\n][^\n]*)\n(?=(\n*)[^ \t\n])}
                { $1 . ($2 ? q() : q( )) }egmsx;
     }
-    return ($d3, _anchor(_resolute($s . $l_chomped, $derivs, $tag), $d3, $anchor));
+    return ($d3, _anchor($d3, $anchor, _resolute($d3, $tag, $s . $l_chomped)));
 }
 
 sub _block_sequence {
@@ -388,7 +378,7 @@ sub _block_sequence {
     my($d1, $w) = _match($derivs, qr/([ ]*)(?=[-][ \t\n])/omsx) or return;
     my $n1 = length $w;
     $n1 > $n or return;
-    my $seq = _anchor(_resolute([], $derivs, $tag), $derivs, $anchor);
+    my $seq = _anchor($derivs, $anchor, _resolute($derivs, $tag, []));
     my($d2, $entries) = _block_seq_entries($derivs, $n1);
     return if ! @{$entries};
     @{$seq} = @{$entries};
@@ -440,7 +430,7 @@ sub _block_mapping {
     my($d1, $spaces) = _match($derivs, qr/([ ]*)/omsx) or return;
     my $n1 = length $spaces;
     $n1 > $n or return;
-    my $map = _anchor(_resolute({}, $derivs, $tag), $derivs, $anchor);
+    my $map = _anchor($derivs, $anchor, _resolute($derivs, $tag, {}));
     my($d2, $entries) = _block_map_entries($derivs, $n1);
     return if ! @{$entries};
     if (0 <= index "$map", 'HASH(') {
@@ -473,7 +463,7 @@ sub _block_map_entries {
 
 sub _block_map_entry {
     my($derivs, $n) = @_;
-    RULE: {
+    RULE: { # explicit key entry
         my $d1 = _match($derivs, '?') or last;
         my($d2, $k) = _block_indented($d1, $n, 'block-out') or last;
         $k = defined $k ? $k : q();
@@ -484,7 +474,7 @@ sub _block_map_entry {
         and return ($d3, $k, $v);
         return ($d2, $k, undef);
     }
-    RULE: {
+    RULE: { # implicit key entry
         my($d1, $k) = _flow_node($derivs, 0, 'block-key');
         $k = defined $k ? $k : q();
         my $d2 = $d1 && _match($d1, qr/[ ]+/omsx) || $d1;
@@ -514,7 +504,7 @@ sub _flow_node {
         or ($d3, $node, $json) = _single_quoted($d2, $n, $c1, $tag, $anchor)
         or ($d3, $node, $json) = _double_quoted($d2, $n, $c1, $tag, $anchor);
         return [$d3, $node, $json] if $d3;
-        return [$d1, _anchor(_resolute(undef, $derivs, $tag), $d1, $anchor), q()]
+        return [$d1, _anchor($d1, $anchor, _resolute($d1, $tag, undef)), q()]
             if $d1;
         return;
     }) or return;
@@ -556,7 +546,7 @@ sub _plain {
     my($d1, $s) = _match($derivs, $lex) or return;
     $s =~ s{[ \t]* \n ((?:[ \t]*\n)*) [ \t]*}
            { ("\n" x ((my $x = $1) =~ tr/\n/\n/)) || q( ) }egmsx;
-    return ($d1, _anchor(_resolute_plain($s, $derivs, $tag), $d1, $anchor), q());
+    return ($d1, _anchor($d1, $anchor, _resolute_plain($d1, $tag, $s)), q());
 }
 
 sub _flow_sequence {
@@ -564,7 +554,7 @@ sub _flow_sequence {
     my $c1 = 'flow-in';
     my $d1 = _match($derivs, '[') or return;
     $derivs = _separate($d1, $n, $c) || $d1;
-    my $seq = _anchor(_resolute([], $derivs, $tag), $derivs, $anchor);
+    my $seq = _anchor($derivs, $anchor, _resolute($derivs, $tag, []));
     my @entries;
     while (my($d2, $x) = _flow_seq_entry($derivs, $n, $c1)) {
         push @entries, $x;
@@ -585,7 +575,7 @@ sub _flow_seq_entry {
     my($d3, $v3) = _flow_map_value($d2 || $derivs, $n, $c, $json);
     if ($d3) {
         $k2 = defined $k2 ? $k2 : q();
-        return ($d3, {$k2 => $v3});
+        return ($d3, {$k2 => $v3}); # single pair
     }
     return ($d2, $k2) if $json;
     return _flow_node($derivs, $n, $c);
@@ -596,7 +586,7 @@ sub _flow_mapping {
     my $c1 = 'flow-in';
     my $d1 = _match($derivs, '{') or return;
     $derivs = _separate($d1, $n, $c) || $d1;
-    my $map = _anchor(_resolute({}, $derivs, $tag), $derivs, $anchor);
+    my $map = _anchor($derivs, $anchor, _resolute($derivs, $tag, {}));
     my @entries;
     while (my($d2, $k, $v) = _flow_map_entry($derivs, $n, $c1)) {
         push @entries, $k, $v;
@@ -663,7 +653,7 @@ sub _single_quoted {
     my $d3 = _match($d2, q(')) or return;
     $s =~ s{(?:('')|[ \t]*\n((?:[ \t]*\n)*)[  \t]*)}
            { $1 ? q(') : ("\n" x ((my $x = $2) =~ tr/\n/\n/)) || q( ) }egomsx;
-    return ($d3, _anchor(_resolute($s, $derivs, $tag), $d3, $anchor), '!!str');
+    return ($d3, _anchor($d3, $anchor, _resolute($d3, $tag, $s)), '!!str');
 }
 
 sub _double_quoted {
@@ -689,7 +679,7 @@ sub _double_quoted {
         : defined $8 ? ("\n" x ((my $y = $8) =~ tr/\n/\n/)) || q( )
         : $1
     }egomsx;
-    return ($d3, _anchor(_resolute($s, $derivs, $tag), $d3, $anchor), '!!str');
+    return ($d3, _anchor($d3, $anchor, _resolute($d3, $tag, $s)), '!!str');
 }
 
 sub _separate {
@@ -794,7 +784,7 @@ YAML::Loaf - YAML Loader Almost YAML 1.2 Specification.
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =head1 SYNOPSIS
 
@@ -847,7 +837,7 @@ YAML::Loaf is one of the pure perl implementations of loader
 for YAML 1.2 data serialization language.
 This processor can resolute YAML Core global tags
 and several part of proposed Perl tag schema.
-Calling with tagmap, you get blessed references as your like.
+Calling with tagmap, you would get blessed references as your like.
 
 =head1 METHODS
 
