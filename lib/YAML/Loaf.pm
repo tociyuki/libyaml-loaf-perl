@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Carp;
 
-use version; our $VERSION = '0.04';
+use version; our $VERSION = '0.05';
 
 my $FALSE = q();
 my %YAML_CORE = (
@@ -41,13 +41,13 @@ my $PLAIN_WORD_IN = qr{
     [^\P{Graph}:,\[\]\{\}]*(?:[:]+[^\P{Graph}:,\[\]\{\}]+)*
 }msx;
 my $PLAIN_ONE_OUT = qr{
-    (?!(?:^---|^[.][.][.]))
+    (?!(?:^---(?:[ \t\n]|\z)|^[.][.][.](?:[ \t\n]|\z)))
     (?:[^\P{Graph}?:\-,\[\]\{\}\#&*!|>'"%\@`]|[?:\-](?=\p{Graph}))
     [^\P{Graph}:]*(?:[:]+[^\P{Graph}:]+)*
     (?:[ \t]+$PLAIN_WORD_OUT)*
 }msx;
 my $PLAIN_ONE_IN = qr{
-    (?!(?:^---|^[.][.][.]))
+    (?!(?:^---(?:[ \t\n]|\z)|^[.][.][.](?:[ \t\n]|\z)))
     (?:[^\P{Graph}?:\-,\[\]\{\}\#&*!|>'"%\@`]|[?:\-](?=[^\P{Graph},\[\]\{\}]))
     [^\P{Graph}:,\[\]\{\}]*(?:[:]+[^\P{Graph}:,\[\]\{\}]+)*
     (?:[ \t]+$PLAIN_WORD_IN)*
@@ -94,7 +94,8 @@ sub Load {
             }
             else {
                 my $d3 = _match($derivs, $S_L_COMMENTS) or last STREAM;
-                push @doc, undef;       # empty document
+                push @doc, undef;           # empty document
+                return $doc[0] if ! wantarray;
                 $derivs = $d3;
             }
         }
@@ -349,8 +350,9 @@ sub _block_scalar {
     my $n1 = $n + $indentation;
     my $lex = $n1 <= $n
     	? qr/((?:[ \t]*\n)*)/msx
-    	: qr{(
-    		(?:(?!(?:^---|^[.][.][.]))(?:[ ]{$n1}[\p{Graph} \t]+\n|[ ]*\n))*
+    	: qr{( 
+    		(?: (?!(?:^---(?:[ \t\n]|\z)|^[.][.][.](?:[ \t\n]|\z)))
+    		    (?:[ ]{$n1}[\p{Graph} \t]+\n|[ ]*\n) )*
 		  )}msx;
     my($d2, $s) = _match($d1, $lex) or return;
 	my $d3 = _s_l_comments($d2) || $d2;
@@ -534,13 +536,15 @@ sub _plain {
     ? qr{(
         $PLAIN_ONE_IN
         (?: [ \t]* \n (?:(?:[ ]{$n}[ \t]*|[ ]*)\n)*
-            (?!(?:---|[.][.][.])) [ ]{$n}[ \t]*
+            (?!(?:^---(?:[ \t\n]|\z)|^[.][.][.](?:[ \t\n]|\z)))
+            [ ]{$n}[ \t]*
             $PLAIN_WORD_IN(?:[ \t]+$PLAIN_WORD_IN)*)*
     )}msx
     : qr{(
         $PLAIN_ONE_OUT
         (?: [ \t]* \n (?:(?:[ ]{$n}[ \t]*|[ ]*)\n)*
-            (?!(?:---|[.][.][.])) [ ]{$n}[ \t]*
+            (?!(?:^---(?:[ \t\n]|\z)|^[.][.][.](?:[ \t\n]|\z)))
+            [ ]{$n}[ \t]*
             $PLAIN_WORD_OUT(?:[ \t]+$PLAIN_WORD_OUT)*)*
     )}msx;
     my($d1, $s) = _match($derivs, $lex) or return;
@@ -784,7 +788,7 @@ YAML::Loaf - YAML Loader Almost YAML 1.2 Specification.
 
 =head1 VERSION
 
-Version 0.04
+Version 0.05
 
 =head1 SYNOPSIS
 
@@ -848,6 +852,51 @@ Calling with tagmap, you would get blessed references as your like.
 Decode a YAML 1.2 stream of the given string.
 In the scalar context, returns only first document.
 In the array context, returns all documents in the stream.
+
+=back
+
+=head1 LIMITATIONS
+
+=over
+
+=item *
+
+It is loadable only in decoded UTF-8 encoding without Byte-Order-Mark.
+You should decode your scalar using with the perl IO layer or the Encode
+module before parsing.
+
+    use File::Slurp;
+    use Encode;
+    use YAML::Loaf;
+    
+    my $octets = read_file('foo.yaml');
+    my $fb = Encode::FB_CROAK|Encode::LEAVE_SRC;
+    my $string = decode('UTF-8', $octets, $fb);
+    my @docs = YAML::Loaf::Load($string);
+
+=item *
+
+Although on YAML 1.2 parsing, this parser can treats only ASCII
+line breaks. No other UNICODE line breaks are treated as non
+breaking characters.
+
+=item *
+
+Available UNICODE code points depend on the Perl's implementation
+different from YAML 1.2 requirements sometimes.
+
+=item *
+
+In double-quoted and single-quoted scalar, this parser allows
+incorrect indentation levels ignoring them.
+
+    -
+     "Correct indentation level of double-quoted
+     is 1 for this sequences"
+    - 
+     "But, in double-quoted or single-quoted
+    this parser allows incorrect indentations
+    without warnings or errors"
 
 =back
 

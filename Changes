@@ -1,5 +1,9 @@
 Revision history for YAML-Loaf
 
+0.05 Mon Nov 19 03:26:02 2012
+    ! fix follow-set on directive-end and document-end.
+    ! fix capture empty explicit-document.
+
 0.04 Sat Nov 17 05:46:38 2012
     * give careful treatments on Load options.
     * take off affected manners on _anchor and _resolute arguments.
